@@ -1,0 +1,28 @@
+{
+  "name": "dropfast-p2p",
+  "version": "1.0.0",
+  "description": "Ultra-fast cross-device P2P file sharing with QR code and OTP pairing, supporting up to 100GB direct streaming",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "p2p",
+    "webrtc",
+    "file-transfer",
+    "qr-pairing",
+    "otp",
+    "cross-device"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.3",
+    "selfsigned": "^5.5.0",
+    "sharp": "^0.35.4",
+    "socket.io": "^4.7.5"
+  }
+}

@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AuraDrop • Instant Direct File Transfer</title>
+  <meta name="description" content="Instant, private, high-speed peer-to-peer file sharing directly between phone and laptop over local Wi-Fi. Up to 100GB supported.">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+
+  <script>
+    (function() {
+      var saved = localStorage.getItem('auradrop_theme') || localStorage.getItem('dropfast_theme');
+      var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var theme = saved || (systemDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css?v=6.0">
+
+  <!-- Camera QR Library -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- Advanced AI OCR Library (Tesseract.js v5) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- Puter.js Free AI Vision & OCR (Zero Key Required) -->
+  <script src="https://js.puter.com/v2/"></script>
+  <!-- Socket.IO -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <!-- Ambient background atmosphere -->
+  <div class="ambient-glow-wrapper">
+    <div class="ambient-orb orb-primary"></div>
+    <div class="ambient-orb orb-secondary"></div>
+    <div class="ambient-orb orb-tertiary"></div>
+    <div class="ambient-grid-pattern"></div>
+  </div>
+
+  <div class="app-shell">
+    <!-- Clean Top Navigation -->
+    <header class="app-nav">
+      <div class="nav-brand">
+        <div class="brand-logo-wrap">
+          <img src="assets/logo.png" alt="AuraDrop" class="brand-logo-img">
+        </div>
+        <div class="brand-text-col">
+          <span class="brand-title">AuraDrop</span>
+          <span class="brand-subtitle">Direct Wi-Fi Transfer</span>
+        </div>
+      </div>
+
+      <div class="nav-meta">
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Switch Theme" aria-label="Toggle theme">
+          <span id="themeToggleIcon">☀️</span>
+        </button>
+        <div class="meta-pill" id="networkStatusPill">
+          <span class="indicator-dot online"></span>
+          <span id="networkStatusText">Local Network</span>
+        </div>
+        <div class="meta-pill">
+          <span id="deviceIcon">💻</span>
+          <span id="deviceName">Laptop</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Feature Switcher Segmented Tabs -->
+    <nav class="feature-segmented-nav" aria-label="Feature navigation">
+      <button class="segmented-nav-btn active" id="tabTransferBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span>Direct Wi-Fi Transfer</span>
+      </button>
+      <button class="segmented-nav-btn" id="tabOcrBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        <span>Photo Text Extractor</span>
+        <span class="nav-badge-pill">AI OCR</span>
+      </button>
+    </nav>
+
+    <!-- Main Card Viewport -->
+    <main class="main-card">
+      
+      <!-- FEATURE 1: P2P TRANSFER SUITE -->
+      <div id="transferFeatureContainer">
+        <!-- STEP 1: ROLE SELECTION -->
+        <div class="view-panel" id="stepRolePanel">
+        <div class="panel-header">
+          <span class="panel-step-badge"><span class="step-badge-dot"></span>Direct Connect</span>
+          <h2>Select an action</h2>
+          <p>Transfer files directly between your phone and laptop without cloud limits</p>
+        </div>
+
+        <div class="role-cards-grid">
+          <!-- Sender Card -->
+          <button class="hero-role-card role-sender" id="chooseSenderBtn">
+            <div class="card-top-row">
+              <div class="role-icon-box send">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+              </div>
+              <span class="role-badge send-badge"><span class="pulse-dot-sm blue"></span> SENDER</span>
+            </div>
+            <div class="card-content">
+              <h3>Send Files</h3>
+              <p>Share photos, 4K videos, documents, or entire folders without compression or size limits.</p>
+              <div class="feature-tags-list">
+                <span class="tag-item">All formats</span>
+                <span class="tag-item">Up to 100GB</span>
+                <span class="tag-item">Full quality</span>
+              </div>
+            </div>
+            <div class="card-footer-cta">
+              <span class="cta-pill send">
+                <span>Send from this device</span>
+                <svg class="cta-arrow-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </div>
+          </button>
+
+          <!-- Receiver Card -->
+          <button class="hero-role-card role-receiver" id="chooseReceiverBtn">
+            <div class="card-top-row">
+              <div class="role-icon-box receive">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+              </div>
+              <span class="role-badge receive-badge"><span class="pulse-dot-sm emerald"></span> RECEIVER</span>
+            </div>
+            <div class="card-content">
+              <h3>Receive Files</h3>
+              <p>Accept incoming transfers directly to your device storage at maximum Wi-Fi speed.</p>
+              <div class="feature-tags-list">
+                <span class="tag-item">Direct to disk</span>
+                <span class="tag-item">Zero cloud</span>
+                <span class="tag-item">Private P2P</span>
+              </div>
+            </div>
+            <div class="card-footer-cta">
+              <span class="cta-pill receive">
+                <span>Receive on this device</span>
+                <svg class="cta-arrow-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2: PAIRING METHOD SELECTION -->
+      <div class="view-panel" id="stepMethodPanel" style="display:none;">
+        <div class="panel-top-nav">
+          <button class="back-link-btn" id="backToRoleBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            <span>Back</span>
+          </button>
+          <span class="badge-role-tag" id="currentRoleTag">Sender</span>
+        </div>
+
+        <div class="panel-header">
+          <span class="panel-step-badge"><span class="step-badge-dot"></span>Pair Devices</span>
+          <h2>Connect with your device</h2>
+          <p>Choose your preferred pairing method</p>
+        </div>
+
+        <div class="method-cards-grid">
+          <!-- Method 1: QR Code -->
+          <button class="hero-method-card method-qr-card" id="chooseMethodQrBtn">
+            <div class="method-top-row">
+              <div class="method-icon-box qr">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM14 20h6v-3h-3v3zM20 14v3"/>
+                </svg>
+              </div>
+              <span class="badge-accent-subtle">Fastest</span>
+            </div>
+            <div class="method-card-content">
+              <h3>QR Code</h3>
+              <p id="qrMethodDesc">Instant camera pairing. Point camera to connect.</p>
+            </div>
+            <div class="card-footer-cta">
+              <span class="cta-pill qr">
+                <span>Use QR Code</span>
+                <svg class="cta-arrow-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </div>
+          </button>
+
+          <!-- Method 2: 6-Digit PIN -->
+          <button class="hero-method-card method-otp-card" id="chooseMethodOtpBtn">
+            <div class="method-top-row">
+              <div class="method-icon-box otp">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="12" x2="6.01" y2="12" stroke-width="3"/><line x1="10" y1="12" x2="10.01" y2="12" stroke-width="3"/><line x1="14" y1="12" x2="14.01" y2="12" stroke-width="3"/><line x1="18" y1="12" x2="18.01" y2="12" stroke-width="3"/>
+                </svg>
+              </div>
+              <span class="badge-accent-subtle purple">Passcode</span>
+            </div>
+            <div class="method-card-content">
+              <h3>6-Digit Code</h3>
+              <p id="otpMethodDesc">Pair by typing a one-time 6-digit passcode.</p>
+            </div>
+            <div class="card-footer-cta">
+              <span class="cta-pill otp">
+                <span>Use Passcode</span>
+                <svg class="cta-arrow-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 3A: SENDER QR DISPLAY -->
+      <div class="view-panel" id="senderQrPanel" style="display:none;">
+        <div class="panel-top-nav">
+          <button class="back-link-btn" id="backFromSenderQrBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            <span>Back</span>
+          </button>
+          <span class="badge-role-tag">Sender</span>
+        </div>
+
+        <div class="panel-header">
+          <span class="panel-step-badge">Pairing</span>
+          <h2>Scan to connect</h2>
+          <p>Scan this QR code using the receiver device's camera</p>
+        </div>
+
+        <div class="qr-center-container">
+          <div class="qr-display-box">
+            <img id="senderQrImage" src="" alt="Pairing QR" />
+            <div class="box-loader" id="senderQrLoader">
+              <div class="spin-ring"></div>
+            </div>
+          </div>
+
+          <div class="qr-timer-pill" id="qrTimerPill">
+            <span class="pulse-timer-dot"></span>
+            <span>Refreshes in <strong id="qrTimerCountdown">1:30</strong></span>
+          </div>
+
+          <div class="link-helper-container">
+            <span class="helper-label">Or open this local network URL on the other device:</span>
+            <div class="helper-input-row">
+              <input type="text" id="senderWifiUrl" readonly value="Connecting..." />
+              <button class="btn-primary-sm" id="copySenderWifiBtn">Copy Link</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3B: RECEIVER QR SCANNER -->
+      <div class="view-panel" id="receiverQrPanel" style="display:none;">
+        <div class="panel-top-nav">
+          <button class="back-link-btn" id="backFromReceiverQrBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            <span>Back</span>
+          </button>
+          <span class="badge-role-tag receive">Receiver</span>
+        </div>
+
+        <div class="panel-header">
+          <span class="panel-step-badge">Pairing</span>
+          <h2>Scan Sender's QR Code</h2>
+          <p>Position the sender's QR code in the camera frame below</p>
+        </div>
+
+        <div class="camera-center-container">
+          <div class="camera-frame" id="receiverCameraViewfinder"></div>
+          
+          <input type="file" id="qrImageFileInput" accept="image/*" capture="environment" style="display:none;">
+
+          <div class="camera-actions" style="flex-wrap: wrap; justify-content: center; gap: 0.6rem;">
+            <button class="btn-primary-md" id="startReceiverCameraBtn">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <span>Live Camera Scanner</span>
+            </button>
+            <button class="btn-secondary-md" id="scanQrImageBtn" type="button">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span>Take Photo / Upload QR</span>
+            </button>
+            <button class="btn-secondary-md" id="stopReceiverCameraBtn" style="display:none;">Close Camera</button>
+          </div>
+
+          <div style="margin-top: 1.25rem; text-align: center;">
+            <p style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 0.6rem;">Having camera permission issues on browser?</p>
+            <button class="btn-subtle-sm" id="switchToOtpFromQrBtn" type="button">
+              <span>🔢 Enter 6-Digit PIN Instead</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3C: SENDER OTP (SHOWS PIN) -->
+      <div class="view-panel" id="senderOtpPanel" style="display:none;">
+        <div class="panel-top-nav">
+          <button class="back-link-btn" id="backFromSenderOtpBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            <span>Back</span>
+          </button>
+          <span class="badge-role-tag">Sender</span>
+        </div>
+
+        <div class="panel-header">
+          <span class="panel-step-badge">Pairing Code</span>
+          <h2>Temporary Passcode</h2>
+          <p>Enter this 6-digit code on the receiving device to connect</p>
+        </div>
+
+        <div class="pin-display-container">
+          <div class="pin-display-boxes" id="senderPinDisplay">
+            <span class="pin-box">-</span>
+            <span class="pin-box">-</span>
+            <span class="pin-box">-</span>
+            <span class="pin-box">-</span>
+            <span class="pin-box">-</span>
+            <span class="pin-box">-</span>
+          </div>
+
+          <button class="btn-secondary-md" id="copySenderPinBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Copy Passcode</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 3D: RECEIVER OTP (ENTERS PIN) -->
+      <div class="view-panel" id="receiverOtpPanel" style="display:none;">
+        <div class="panel-top-nav">
+          <button class="back-link-btn" id="backFromReceiverOtpBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            <span>Back</span>
+          </button>
+          <span class="badge-role-tag receive">Receiver</span>
+        </div>
+
+        <div class="panel-header">
+          <span class="panel-step-badge">Pairing Code</span>
+          <h2>Enter Passcode</h2>
+          <p>Type the 6-digit code shown on the sender screen</p>
+        </div>
+
+        <div class="pin-input-container">
+          <div class="pin-input-grid" id="receiverPinInputs">
+            <input type="text" maxlength="1" class="pin-cell" data-index="0" autofocus inputmode="numeric" pattern="[0-9]*">
+            <input type="text" maxlength="1" class="pin-cell" data-index="1" inputmode="numeric" pattern="[0-9]*">
+            <input type="text" maxlength="1" class="pin-cell" data-index="2" inputmode="numeric" pattern="[0-9]*">
+            <input type="text" maxlength="1" class="pin-cell" data-index="3" inputmode="numeric" pattern="[0-9]*">
+            <input type="text" maxlength="1" class="pin-cell" data-index="4" inputmode="numeric" pattern="[0-9]*">
+            <input type="text" maxlength="1" class="pin-cell" data-index="5" inputmode="numeric" pattern="[0-9]*">
+          </div>
+
+          <button class="btn-primary-lg" id="submitReceiverPinBtn" disabled>
+            <span>Connect Devices</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 4: ACTIVE CONNECTION BANNER -->
+      <div class="active-connection-strip" id="pairedPeerBanner" style="display:none;">
+        <div class="strip-left">
+          <span class="connected-dot"></span>
+          <span id="pairedDeviceIcon" style="font-size: 1.15rem; line-height: 1;">📱</span>
+          <span class="strip-title">Connected with <strong id="pairedPeerDeviceName">Device</strong></span>
+          <span class="badge-status-pill" id="myRoleBadge">P2P Ready</span>
+        </div>
+        <div class="strip-right">
+          <button class="btn-primary-sm" id="pairedSendFilesNowBtn" type="button" style="margin-right: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            <span>Send Files</span>
+          </button>
+          <button class="btn-subtle-danger-sm" id="disconnectBtn">Disconnect</button>
+        </div>
+      </div>
+
+      <!-- STEP 5A: SENDER FILE DROPZONE & QUEUE (SENDER ONLY) -->
+      <div class="view-panel" id="senderTransferPanel" style="display:none;">
+        <div class="upload-dropzone" id="fileDropzone">
+          <input type="file" id="fileInput" multiple style="display:none;">
+          <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;">
+
+          <div class="dropzone-core">
+            <div class="dropzone-arrow-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <h3 id="senderDropzoneTitle">Select or Drag & Drop Files</h3>
+            <p style="margin-bottom: 0.6rem;">Any format supported: 4K Videos, Photos, Audio, Docs, ZIP, APK or Folders</p>
+            <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.25rem;">
+              <span style="display:inline-block; font-size: 0.75rem; color: var(--accent-cyan); background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); padding: 3px 10px; border-radius: 9999px;">
+                ⚡ All formats up to 100GB • Zero compression
+              </span>
+              <span style="display:inline-flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: var(--accent-emerald); background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 3px 10px; border-radius: 9999px;">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--accent-emerald);"></span>
+                Two-way active: ready to send or receive
+              </span>
+            </div>
+            <div class="dropzone-btns">
+              <button class="btn-primary-md" id="selectFilesBtn" type="button">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                <span>Select Files (Any Format)</span>
+              </button>
+              <button class="btn-secondary-md" id="selectFolderBtn" type="button">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span>Select Folder</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="staged-queue-box" id="stagedFilesContainer" style="display:none;">
+          <div class="queue-header">
+            <span>Files ready to send (<strong id="stagedCount">0</strong>)</span>
+            <div class="queue-meta">
+              <span id="stagedTotalSize">0 MB</span>
+              <button class="btn-subtle-sm" id="addMoreFilesBtn" type="button" style="padding: 0.25rem 0.65rem; font-size: 0.75rem;">+ Add More</button>
+              <button class="btn-link text-danger" id="clearFilesBtn" type="button">Clear All</button>
+            </div>
+          </div>
+
+          <div class="queue-files-list" id="stagedList"></div>
+
+          <button class="btn-success-lg" id="startTransferBtn" type="button">
+            <span>Send Files to Connected Device</span>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 5B: RECEIVER WAITING RADAR (PURE RECEIVER - NO FILE PICKER) -->
+      <div class="view-panel" id="receiverWaitingPanel" style="display:none;">
+        <div class="waiting-state-center">
+          <div class="pulse-waiting-ring">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          </div>
+          <h3>Receiver Mode Active</h3>
+          <p id="receiverWaitingText">Waiting for connected sender to select and send files...</p>
+
+          <div class="receiver-status-card" style="margin-top: 1.25rem; padding: 1rem 1.25rem; background: var(--bg-inner); border: 1px solid var(--border-card); border-radius: var(--radius-sm); text-align: left; width: 100%; max-width: 380px;">
+            <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom: 0.4rem; font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent-emerald); box-shadow: 0 0 8px var(--accent-emerald); display:inline-block;"></span>
+              <span>Direct Wi-Fi Receiver Ready</span>
+            </div>
+            <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0; line-height: 1.45;">
+              Files sent from the paired sender will stream directly to this device at maximum local Wi-Fi speed.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 6: LIVE ACTIVE TRANSFER PROGRESS -->
+      <div class="view-panel" id="activeTransferPanel" style="display:none;">
+        <div class="transfer-status-row">
+          <div class="file-summary">
+            <h3 id="transferFileName">transferring.zip</h3>
+            <span class="counter-text" id="transferFileCounter">File 1 of 1</span>
+          </div>
+          <button class="btn-subtle-danger-sm" id="cancelTransferBtn">Cancel</button>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-label">SPEED</span>
+            <span class="metric-value"><strong id="currentSpeedVal">0.0</strong> <small>MB/s</small></span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">PROGRESS</span>
+            <span class="metric-value"><strong id="transferPercentVal">0%</strong></span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">TIME LEFT</span>
+            <span class="metric-value"><strong id="etaVal">--:--</strong></span>
+          </div>
+        </div>
+
+        <div class="progress-bar-shell">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+
+        <div class="progress-sub-details">
+          <span id="transferredBytesLabel">0 MB</span>
+          <span id="totalBytesLabel">0 MB</span>
+        </div>
+      </div>
+
+      <!-- STEP 7: COMPLETED TRANSFERS & DOWNLOAD -->
+      <div class="view-panel" id="completedPanel" style="display:none;">
+        <div class="completed-header text-center">
+          <div class="success-icon-badge">✓</div>
+          <h2>Transfer complete!</h2>
+          <p>Files received and verified</p>
+        </div>
+
+        <div class="completed-download-list" id="completedFilesList"></div>
+
+        <div class="text-center" style="margin-top: 1.5rem;">
+          <button class="btn-primary-md" id="receiveMoreBtn">Ready for more files</button>
+        </div>
+      </div>
+
+      </div> <!-- END #transferFeatureContainer -->
+
+      <!-- FEATURE 2: ADVANCED AI OCR TEXT EXTRACTOR -->
+      <div class="ocr-feature-panel" id="ocrFeatureContainer" style="display:none;">
+        <div class="panel-header">
+          <span class="panel-step-badge"><span class="step-badge-dot"></span>AI Vision OCR</span>
+          <h2>Extract Text from Any Photo</h2>
+          <p>Instant high-accuracy extraction • Automatic handwriting, whiteboard notes, codes, and documents</p>
+        </div>
+
+        <!-- AI Engine Status & Optional Gemini Connect -->
+        <div class="ocr-engine-status-bar">
+          <span class="ocr-engine-pill active" id="ocrEngineActivePill">
+            <span class="engine-dot"></span>
+            <span id="ocrActiveEngineLabel">Dual Neural AI Vision Engine (99%+ Accuracy)</span>
+          </span>
+          <button type="button" class="btn-gemini-link" id="ocrGeminiKeyBtn" title="Connect Google Gemini API for 99.9% human-grade handwriting accuracy">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span id="ocrGeminiKeyLabel">Connect Gemini AI (Optional)</span>
+          </button>
+        </div>
+
+        <!-- OCR UPLOAD DROPZONE -->
+        <div class="ocr-upload-dropzone" id="ocrDropzone">
+          <input type="file" id="ocrFileInput" accept="image/*" style="display:none;">
+          <input type="file" id="ocrCameraInput" accept="image/*" capture="environment" style="display:none;">
+
+          <div class="ocr-dropzone-inner">
+            <div class="ocr-icon-circle">
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7V4h16v3M4 17v3h16v-3M9 12h6M12 9v6"/>
+              </svg>
+            </div>
+            <h3>Drop an image here, or select to scan</h3>
+            <p>Upload any photo or handwritten note • Instant AI extraction • Zero setup needed</p>
+            <div class="ocr-action-btns">
+              <button class="btn-primary-md" id="ocrSelectFileBtn" type="button">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload Image</span>
+              </button>
+              <button class="btn-secondary-md" id="ocrCaptureCameraBtn" type="button">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                <span>Take Photo</span>
+              </button>
+            </div>
+            <span class="ocr-paste-hint">💡 Tip: You can also press <strong>Ctrl + V</strong> to paste an image directly</span>
+          </div>
+        </div>
+
+        <!-- OCR PROGRESS BAR -->
+        <div class="ocr-progress-card" id="ocrProgressContainer" style="display:none;">
+          <div class="ocr-progress-status">
+            <div class="ocr-spinner"></div>
+            <span id="ocrStatusText">Reading text with AI Neural Vision...</span>
+            <span class="ocr-pct" id="ocrProgressPercent">0%</span>
+          </div>
+          <div class="progress-bar-shell" style="margin-top:0.75rem;">
+            <div class="progress-bar-fill" id="ocrProgressBarFill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- OCR RESULT CARD -->
+        <div class="ocr-result-card" id="ocrResultContainer" style="display:none;">
+          <div class="ocr-result-columns">
+            <!-- Left: Image Preview & Quick Controls -->
+            <div class="ocr-preview-column">
+              <div class="ocr-preview-wrapper">
+                <img id="ocrPreviewImg" src="" alt="OCR Source Preview">
+                <div class="ocr-preview-tag" id="ocrPreviewModeBadge">Original Photo</div>
+              </div>
+              <div style="display:flex; gap:0.5rem; margin-top:0.65rem;">
+                <button type="button" class="btn-subtle-sm" id="ocrRotateBtn" style="flex:1;">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                  <span>Rotate 90°</span>
+                </button>
+                <button class="btn-subtle-sm" id="ocrTogglePreviewModeBtn" type="button" style="flex:1;">
+                  Enhanced Filter
+                </button>
+              </div>
+            </div>
+
+            <!-- Right: Text Output & Controls -->
+            <div class="ocr-text-column">
+              <div class="ocr-text-header">
+                <div class="ocr-text-meta">
+                  <span class="ocr-meta-chip" id="ocrWordCountChip">0 words</span>
+                  <span class="ocr-meta-chip" id="ocrCharCountChip">0 chars</span>
+                  <span class="ocr-meta-chip confidence" id="ocrConfidenceChip">Confidence: 98%</span>
+                </div>
+                <button class="btn-primary-sm copy-text-btn" id="ocrCopyBtn" type="button">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span id="ocrCopyBtnText">Copy Extracted Text</span>
+                </button>
+              </div>
+
+              <!-- Detected Alphanumeric Codes & Part Numbers (1-Click Copy) -->
+              <div class="ocr-entities-section" id="ocrEntitiesSection" style="display:none;">
+                <div class="ocr-entities-header">
+                  <span class="ocr-entities-title">⚡ Detected Codes & Reference IDs <small>(Click any code to copy)</small>:</span>
+                </div>
+                <div class="ocr-entities-list" id="ocrEntitiesList"></div>
+              </div>
+
+              <!-- View Switcher & Formatting Bar -->
+              <div class="ocr-view-tabs">
+                <button type="button" class="ocr-tab-btn active" id="ocrTabFormattedBtn">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                  <span>Structured Document View</span>
+                </button>
+                <button type="button" class="ocr-tab-btn" id="ocrTabTextareaBtn">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  <span>Raw Text Editor</span>
+                </button>
+                <div class="ocr-tab-tools">
+                  <button type="button" class="btn-subtle-sm" id="ocrCleanSpacingBtn" title="Clean extra spaces and stray symbols">Clean Spaces</button>
+                </div>
+              </div>
+
+              <!-- Formatted Structured Lines View -->
+              <div id="ocrFormattedContainer" class="ocr-formatted-container"></div>
+
+              <!-- Raw Textarea Editor -->
+              <textarea id="ocrOutputText" class="ocr-textarea" placeholder="Extracted text will appear here. You can also edit or copy directly..." rows="12" style="display:none;"></textarea>
+
+              <div class="ocr-card-footer">
+                <button class="btn-secondary-sm" id="ocrDownloadTxtBtn" type="button">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Download .TXT</span>
+                </button>
+                <button class="btn-subtle-danger-sm" id="ocrNewScanBtn" type="button">Scan Another Photo</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div> <!-- END #ocrFeatureContainer -->
+
+    </main>
+
+    <footer class="app-bottom-info">
+      <span>AuraDrop • Direct P2P File Transfer & AI Vision OCR Suite • Zero Cloud Storage</span>
+    </footer>
+  </div>
+
+  <!-- Optional Google Gemini AI Modal -->
+  <div class="modal-backdrop" id="ocrGeminiModal" style="display:none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-size:1.3rem;">✨</span>
+          <h3 style="margin:0; font-size:1.1rem; font-weight:700;">Google Gemini Vision AI</h3>
+        </div>
+        <button type="button" class="modal-close-btn" id="ocrGeminiModalClose">✕</button>
+      </div>
+      <div class="modal-body" style="padding:1rem 0;">
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem; line-height:1.5;">
+          AuraDrop already includes built-in Dual Neural AI Vision. You can optionally connect your free <strong>Google AI Studio Gemini API Key</strong> for 99.9% human-grade handwriting and whiteboard accuracy.
+        </p>
+        <div class="form-group">
+          <label style="display:block; font-size:0.8rem; font-weight:600; margin-bottom:0.4rem;">Gemini API Key</label>
+          <input type="password" id="geminiApiKeyInput" class="form-input" placeholder="AIzaSy..." style="width:100%; font-family:var(--font-mono); font-size:0.85rem; padding:0.6rem 0.8rem; border-radius:6px; border:1px solid var(--border-card); background:var(--bg-input); color:var(--text-primary);">
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.6rem;">
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="font-size:0.78rem; color:var(--accent-blue); text-decoration:none;">Get Free Key from Google AI Studio ↗</a>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.6rem; margin-top:1rem;">
+        <button type="button" class="btn-secondary-sm" id="ocrGeminiClearBtn">Clear Key</button>
+        <button type="button" class="btn-primary-sm" id="ocrGeminiSaveBtn">Save & Activate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-shelf" id="toastContainer"></div>
+
+  <!-- Audio Chime -->
+  <audio id="chimeSuccess" preload="auto">
+    <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbqWE1M12n4/TFkGIvRG6m4fXKnHBHUXSk2/TNpn5XW36i1vLQroNfZX+e0/PTr4pdZX6b0fLUr4hgaH2Zz/PVsYpkaXyYzvPXs4xlaXqXx/PZtI9naXaVwvTauZJob3SSv/TdvZZrb3COu/TfwplscmyLtvThx51wcm2Jse/jyp9yc2yGrerly6R2dWiBpebly6d5d2d/n+Hmy6t8eWV8m97lza5/e2N3k9ffz7OFf2ZuiMvRyLiLhGNmdYDFw7WPimtkYW57tsfAvI5xZ2BleK/AubiNfG1laHaovLG2kXpsZW54p7qruJR8bWVveam0qbeWf29la3iqs6i4mIBxZW16qLOor5l/cWlveqqyqa6bf3Bqb3qpsaSsl4BwZ3B6qK+kqpWBcmdveqeqoKmTf3BlbninqJ+mk4BwZm54pqicpZOBb2VueKWkm6SUgG9mbninp5mik4BvaG54paaYo5KCb2hueKWlk6SSgm9obnillZKSk4NvaG14pZaQkZKDcGlteKSTj5CTg3BqbXikko6Qk4Nwam14pJKNj5ODcGptd6SPi46Sg3BqbXikj4mNkINwam13o46IjZCDcGptd6ONh4uQg3BqbXeijYWLj4Nwam13oo2EiY+DcGptd6KMhIaPg3BqbXehjIKFjoNwamp3oYuBg42Eb2pqcqCHfX+JhG9qanKfg3t8h4Vvamtyn4F3eIOEb2pqcZ5+dHKDhG9qanGce2xshIRvampxm3lpbIOEb2pqcZp3Z2mDg29qanKYdWBsg4RvampxlnFca4SEb2pqcJVtV2mEhG9qanCRalBphIRvaWlwiWRHZ4SEb2lpcH1fPGaEhG9paXB0VypnhIRvaWlvaEQnZoSEb2tqb1szCWaEhG9qaG9JAgRnhIRvamlwSw==" type="audio/wav">
+  </audio>
+
+  <!-- Scripts -->
+  <script src="js/webrtc-streamer.js?v=6.0"></script>
+  <script src="js/qr-scanner.js?v=6.0"></script>
+  <script src="js/ocr-engine.js?v=6.0"></script>
+  <script src="js/app.js?v=6.0"></script>
+</body>
+</html>
