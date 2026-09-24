@@ -13,6 +13,8 @@
   let socket = null;
   let streamer = null;
   let qrScanner = null;
+  let peerInstance = null;
+  let activePeerConn = null;
   let currentRoomId = null;
   let currentOtp = null;
   let pairedPeer = null;
@@ -350,142 +352,413 @@
     try { chimeSuccess.play().catch(() => {}); } catch(e) {}
   }
 
-  // Request Session from Server
+  // Helper to generate a client-side pairing session (0ms instant QR, serverless fallback)
+  function generateLocalSession() {
+    const roomId = 'drop_' + Math.random().toString(36).substring(2, 10);
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const joinUrl = `${window.location.origin}${window.location.pathname}?join=${roomId}&otp=${otp}`;
+
+    let qrDataUrl = '';
+    if (typeof QRious !== 'undefined') {
+      try {
+        const qr = new QRious({
+          value: joinUrl,
+          size: 320,
+          level: 'M'
+        });
+        qrDataUrl = qr.toDataURL();
+      } catch (err) {
+        console.warn('QRious generation error:', err);
+      }
+    }
+
+    return {
+      success: true,
+      roomId,
+      otp,
+      joinUrl,
+      qrDataUrl,
+      isLocalFallback: true
+    };
+  }
+
+  function applySessionData(res) {
+    if (!res) return;
+    currentRoomId = res.roomId;
+    currentOtp = res.otp;
+
+    senderQrLoader.style.display = 'none';
+    if (res.qrDataUrl) {
+      senderQrImage.src = res.qrDataUrl;
+      senderQrImage.style.display = 'block';
+    }
+    senderWifiUrl.value = res.joinUrl;
+
+    const pinBoxes = senderPinDisplay.querySelectorAll('.pin-box');
+    res.otp.split('').forEach((d, i) => {
+      if (pinBoxes[i]) pinBoxes[i].textContent = d;
+    });
+
+    if (pairingMethod === 'qr') {
+      startQrAutoRefreshTimer();
+    }
+
+    // If socket is not connected (e.g. static hosting on Netlify), activate PeerJS listener
+    if (!socket || !socket.connected) {
+      initPeerSender(res.otp);
+    }
+  }
+
+  // Request Session from Server or Local Fallback
   function requestSession() {
-    if (!socket) return;
     senderQrLoader.style.display = 'flex';
     senderQrImage.style.display = 'none';
 
-    socket.emit('create-session', {
-      role: userRole,
-      deviceName: myDeviceName
-    }, (res) => {
-      senderQrLoader.style.display = 'none';
-      if (res && res.success) {
-        currentRoomId = res.roomId;
-        currentOtp = res.otp;
+    // If socket is connected to local Node.js server, use it with 1.2s timeout safeguard
+    if (socket && socket.connected) {
+      let responded = false;
+      const timeoutId = setTimeout(() => {
+        if (!responded) {
+          console.log('[DropFast] Server response timeout, using instant client-side QR session');
+          applySessionData(generateLocalSession());
+        }
+      }, 1200);
 
-        senderQrImage.src = res.qrDataUrl;
-        senderQrImage.style.display = 'block';
-        senderWifiUrl.value = res.joinUrl;
+      socket.emit('create-session', {
+        role: userRole,
+        deviceName: myDeviceName
+      }, (res) => {
+        responded = true;
+        clearTimeout(timeoutId);
+        if (res && res.success) {
+          applySessionData(res);
+        } else {
+          applySessionData(generateLocalSession());
+        }
+      });
+    } else {
+      // Offline / Netlify static mode: Generate QR Code instantly!
+      applySessionData(generateLocalSession());
+    }
+  }
 
-        const pinBoxes = senderPinDisplay.querySelectorAll('.pin-box');
-        res.otp.split('').forEach((d, i) => {
-          if (pinBoxes[i]) pinBoxes[i].textContent = d;
+  // PeerJS Serverless P2P Host (Sender)
+  function initPeerSender(otp) {
+    if (typeof Peer === 'undefined') return;
+    try {
+      if (peerInstance) {
+        try { peerInstance.destroy(); } catch (e) {}
+      }
+      const peerId = `dropfast_${otp}`;
+      peerInstance = new Peer(peerId, {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
+          ]
+        }
+      });
+
+      peerInstance.on('open', () => {
+        console.log('[DropFast] PeerJS Cloud Ready. Sender ID:', peerId);
+        if (networkStatusPill) {
+          networkStatusPill.innerHTML = '<span class="indicator-dot online"></span><span>P2P Cloud Ready</span>';
+        }
+      });
+
+      peerInstance.on('connection', (conn) => {
+        console.log('[DropFast] Peer connected via PeerJS:', conn.peer);
+        activePeerConn = conn;
+        conn.on('open', () => {
+          pairedPeer = { id: conn.peer, role: 'receiver', name: 'Partner Device' };
+          showStepPaired({ id: conn.peer, role: 'receiver', name: 'Partner Device', isInitiator: false });
+          setupPeerConnectionEvents(conn);
+        });
+      });
+
+      peerInstance.on('error', (err) => {
+        console.warn('[DropFast] PeerJS Sender warning:', err);
+      });
+    } catch (err) {
+      console.error('[DropFast] PeerJS setup failed:', err);
+    }
+  }
+
+  // PeerJS Serverless P2P Client (Receiver)
+  function connectPeerReceiver(otp) {
+    if (typeof Peer === 'undefined') {
+      showToast('P2P library loading, please try in a moment');
+      return;
+    }
+    showToast(`Connecting with PIN ${otp}...`);
+    try {
+      if (peerInstance) {
+        try { peerInstance.destroy(); } catch (e) {}
+      }
+      peerInstance = new Peer({
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
+          ]
+        }
+      });
+
+      peerInstance.on('open', () => {
+        const targetId = `dropfast_${otp}`;
+        console.log('[DropFast] Connecting to peer host:', targetId);
+        const conn = peerInstance.connect(targetId, { reliable: true });
+        activePeerConn = conn;
+
+        conn.on('open', () => {
+          console.log('[DropFast] Connected to Sender via PeerJS!');
+          pairedPeer = { id: targetId, role: 'sender', name: 'Sender Device' };
+          showStepPaired({ id: targetId, role: 'sender', name: 'Sender Device', isInitiator: true });
+          setupPeerConnectionEvents(conn);
         });
 
-        // Start 1:30 (90 seconds) countdown for QR Code
-        if (pairingMethod === 'qr') {
-          startQrAutoRefreshTimer();
+        conn.on('error', (err) => {
+          console.warn('[DropFast] PeerJS Conn error:', err);
+          showToast('Connection failed. Make sure Sender QR/PIN is active.');
+        });
+      });
+
+      peerInstance.on('error', (err) => {
+        console.warn('[DropFast] PeerJS Receiver error:', err);
+        showToast('Pairing timed out. Verify PIN/QR code on Sender.');
+      });
+    } catch (err) {
+      console.error('[DropFast] Receiver Peer error:', err);
+    }
+  }
+
+  // Setup PeerJS Data Transfer Events
+  function setupPeerConnectionEvents(conn) {
+    conn.on('data', async (data) => {
+      if (typeof data === 'string') {
+        try {
+          const msg = JSON.parse(data);
+          if (msg.type === 'BATCH_START') {
+            completedFiles = [];
+            renderCompletedFiles();
+            if (activeTransferPanel) activeTransferPanel.style.display = 'block';
+            if (receiverWaitingPanel) receiverWaitingPanel.style.display = 'none';
+            if (transferFileCounter) transferFileCounter.textContent = `Receiving 1 of ${msg.totalFiles || 1}`;
+          } else if (msg.type === 'FILE_METADATA') {
+            streamer.incomingFileMeta = msg;
+            streamer.incomingBytes = 0;
+            streamer.incomingChunks = [];
+            streamer.startMetrics();
+            handleTransferProgress({
+              direction: 'receive',
+              fileName: msg.name,
+              fileIndex: msg.fileIndex,
+              totalFiles: msg.totalFiles,
+              transferredBytes: 0,
+              totalBytes: msg.size,
+              percentage: 0,
+              speedMBps: '0.0'
+            });
+          } else if (msg.type === 'FILE_COMPLETE') {
+            const blob = new Blob(streamer.incomingChunks, { type: streamer.incomingFileMeta?.mimeType || 'application/octet-stream' });
+            const downloadUrl = URL.createObjectURL(blob);
+            handleFileReceived({
+              name: streamer.incomingFileMeta?.name || 'download',
+              size: streamer.incomingFileMeta?.size || blob.size,
+              downloadUrl: downloadUrl
+            });
+            streamer.incomingChunks = [];
+            try { chimeSuccess.play().catch(() => {}); } catch(e) {}
+            showToast(`Received: ${streamer.incomingFileMeta?.name || 'File'}`);
+          } else if (msg.type === 'TRANSFER_ALL_DONE') {
+            handleAllCompleted();
+          }
+        } catch (e) {
+          console.warn('Control parse error:', e);
         }
+      } else if (data instanceof ArrayBuffer || (data && data.byteLength)) {
+        const buf = data instanceof ArrayBuffer ? data : data.buffer;
+        streamer.incomingChunks.push(buf);
+        streamer.incomingBytes += buf.byteLength;
+        const total = streamer.incomingFileMeta?.size || 1;
+        const pct = Math.min(100, Math.round((streamer.incomingBytes / total) * 100));
+        handleTransferProgress({
+          direction: 'receive',
+          fileName: streamer.incomingFileMeta?.name || 'File',
+          fileIndex: streamer.incomingFileMeta?.fileIndex || 1,
+          totalFiles: streamer.incomingFileMeta?.totalFiles || 1,
+          transferredBytes: streamer.incomingBytes,
+          totalBytes: total,
+          percentage: pct,
+          speedMBps: streamer.currentSpeedMBps || 'Fast'
+        });
       }
+    });
+
+    conn.on('close', () => {
+      handlePeerDisconnected();
     });
   }
 
   // Socket & Networking Setup
   function initNetworking() {
-    socket = io();
-
-    // Reset receiver files when sender initiates a new batch
-    socket.on('transfer-batch-start', ({ totalFiles }) => {
-      completedFiles = [];
-      renderCompletedFiles();
-      if (activeTransferPanel) activeTransferPanel.style.display = 'block';
-      if (receiverWaitingPanel) receiverWaitingPanel.style.display = 'none';
-      if (transferFileCounter) transferFileCounter.textContent = `Receiving 1 of ${totalFiles || 1}`;
-    });
-
-    // WebRTC streamer for 100GB files
-    streamer = new WebRTCStreamer({
-      socket: socket,
-      onStatusChange: (status) => {
-        if (status === 'completed') handleAllCompleted();
-      },
-      onProgress: (stats) => handleTransferProgress(stats),
-      onFileReceived: (fileInfo) => handleFileReceived(fileInfo),
-      onError: (err) => showToast(err)
-    });
-
-    socket.on('connect', () => {
-      networkStatusPill.innerHTML = '<span class="indicator-dot online"></span><span>Online</span>';
-      checkUrlJoin();
-
-      // Seamless Mobile Reconnection: If device wakes up after picking files, rejoin active room
-      if (currentRoomId && pairedPeer) {
-        socket.emit('reconnect-session', {
-          roomId: currentRoomId,
-          role: userRole,
-          deviceName: myDeviceName
-        }, (res) => {
-          if (res && res.success) {
-            pairedPeer.id = res.peerId;
-            showToast(`Connection active with ${res.peerDevice || 'Partner'}`);
-          }
-        });
-      }
-    });
-
-    socket.on('disconnect', () => {
-      networkStatusPill.innerHTML = '<span class="indicator-dot"></span><span>Offline</span>';
-    });
-
-    socket.on('peer-connected', ({ peerId, peerRole, peerDevice, isInitiator }) => {
-      showStepPaired({ id: peerId, role: peerRole, name: peerDevice, isInitiator });
-      streamer.startConnection(peerId, Boolean(isInitiator));
-    });
-
-    // Mobile background grace: partner is selecting files in native picker
-    socket.on('peer-reconnecting', ({ message }) => {
-      console.log('[DropFast] Peer is reconnecting/selecting files...');
-      showToast(message || 'Partner is choosing files...');
-    });
-
-    socket.on('peer-reconnected', ({ peerId, peerDevice }) => {
-      if (pairedPeer) pairedPeer.id = peerId;
-      showToast(`${peerDevice || 'Partner'} reconnected! Ready to transfer.`);
-    });
-
-    socket.on('peer-disconnected', () => {
-      handlePeerDisconnected();
-    });
-
-    socket.on('switch-role', ({ newRole }) => {
-      userRole = newRole;
-      if (myRoleBadge) myRoleBadge.textContent = 'P2P Ready';
-      if (senderTransferPanel) senderTransferPanel.style.display = 'block';
-      if (receiverWaitingPanel) receiverWaitingPanel.style.display = 'none';
-      showToast('Switched: You can send files anytime');
-    });
-
-    // Single authoritative instant file reception listener via WebSocket
-    socket.on('instant-file-receive', (fileData) => {
-      const blob = new Blob([fileData.buffer], { type: fileData.type || 'application/octet-stream' });
-      const downloadUrl = URL.createObjectURL(blob);
-      handleFileReceived({
-        name: fileData.name,
-        size: fileData.size,
-        downloadUrl: downloadUrl
+    try {
+      socket = io({
+        timeout: 5000,
+        reconnectionAttempts: 3
       });
-      try { chimeSuccess.play().catch(() => {}); } catch(e) {}
-      showToast(`Received: ${fileData.name}`);
-    });
+    } catch (e) {
+      console.warn('[DropFast] Socket initialization error:', e);
+    }
 
-    // Keep-alive heartbeat every 10 seconds
-    setInterval(() => {
-      if (socket && socket.connected && pairedPeer) {
-        socket.emit('keep-alive');
-      }
-    }, 10000);
+    if (socket) {
+      // Reset receiver files when sender initiates a new batch
+      socket.on('transfer-batch-start', ({ totalFiles }) => {
+        completedFiles = [];
+        renderCompletedFiles();
+        if (activeTransferPanel) activeTransferPanel.style.display = 'block';
+        if (receiverWaitingPanel) receiverWaitingPanel.style.display = 'none';
+        if (transferFileCounter) transferFileCounter.textContent = `Receiving 1 of ${totalFiles || 1}`;
+      });
+
+      // WebRTC streamer for 100GB files
+      streamer = new WebRTCStreamer({
+        socket: socket,
+        onStatusChange: (status) => {
+          if (status === 'completed') handleAllCompleted();
+        },
+        onProgress: (stats) => handleTransferProgress(stats),
+        onFileReceived: (fileInfo) => handleFileReceived(fileInfo),
+        onError: (err) => showToast(err)
+      });
+
+      socket.on('connect', () => {
+        networkStatusPill.innerHTML = '<span class="indicator-dot online"></span><span>Online (Wi-Fi)</span>';
+        checkUrlJoin();
+
+        if (currentRoomId && pairedPeer) {
+          socket.emit('reconnect-session', {
+            roomId: currentRoomId,
+            role: userRole,
+            deviceName: myDeviceName
+          }, (res) => {
+            if (res && res.success) {
+              pairedPeer.id = res.peerId;
+              showToast(`Connection active with ${res.peerDevice || 'Partner'}`);
+            }
+          });
+        }
+      });
+
+      socket.on('disconnect', () => {
+        networkStatusPill.innerHTML = '<span class="indicator-dot online"></span><span>P2P Cloud Ready</span>';
+      });
+
+      socket.on('connect_error', () => {
+        // When running on Netlify or static CDN, fallback gracefully to P2P Cloud Ready
+        networkStatusPill.innerHTML = '<span class="indicator-dot online"></span><span>P2P Cloud Ready</span>';
+      });
+
+      socket.on('peer-connected', ({ peerId, peerRole, peerDevice, isInitiator }) => {
+        showStepPaired({ id: peerId, role: peerRole, name: peerDevice, isInitiator });
+        streamer.startConnection(peerId, Boolean(isInitiator));
+      });
+
+      // Mobile background grace: partner is selecting files in native picker
+      socket.on('peer-reconnecting', ({ message }) => {
+        showToast(message || 'Partner is choosing files...');
+      });
+
+      socket.on('peer-reconnected', ({ peerId, peerDevice }) => {
+        if (pairedPeer) pairedPeer.id = peerId;
+        showToast(`${peerDevice || 'Partner'} reconnected! Ready to transfer.`);
+      });
+
+      socket.on('peer-disconnected', () => {
+        handlePeerDisconnected();
+      });
+
+      socket.on('switch-role', ({ newRole }) => {
+        userRole = newRole;
+        if (myRoleBadge) myRoleBadge.textContent = 'P2P Ready';
+        if (senderTransferPanel) senderTransferPanel.style.display = 'block';
+        if (receiverWaitingPanel) receiverWaitingPanel.style.display = 'none';
+        showToast('Switched: You can send files anytime');
+      });
+
+      socket.on('instant-file-receive', (fileData) => {
+        const blob = new Blob([fileData.buffer], { type: fileData.type || 'application/octet-stream' });
+        const downloadUrl = URL.createObjectURL(blob);
+        handleFileReceived({
+          name: fileData.name,
+          size: fileData.size,
+          downloadUrl: downloadUrl
+        });
+        try { chimeSuccess.play().catch(() => {}); } catch(e) {}
+        showToast(`Received: ${fileData.name}`);
+      });
+
+      setInterval(() => {
+        if (socket && socket.connected && pairedPeer) {
+          socket.emit('keep-alive');
+        }
+      }, 10000);
+    } else {
+      // If socket failed, still initialize streamer
+      streamer = new WebRTCStreamer({
+        socket: null,
+        onStatusChange: (status) => {
+          if (status === 'completed') handleAllCompleted();
+        },
+        onProgress: (stats) => handleTransferProgress(stats),
+        onFileReceived: (fileInfo) => handleFileReceived(fileInfo),
+        onError: (err) => showToast(err)
+      });
+      networkStatusPill.innerHTML = '<span class="indicator-dot online"></span><span>P2P Cloud Ready</span>';
+    }
+
+    checkUrlJoin();
   }
 
   // Check URL Join (Receiver clicked or scanned QR)
   function checkUrlJoin() {
     const params = new URLSearchParams(window.location.search);
-    const joinRoomId = params.get('join');
-    if (joinRoomId) {
-      showToast('Connecting to room...');
-      socket.emit('join-session-room', {
-        roomId: joinRoomId,
+    const joinRoomId = params.get('join') || params.get('room');
+    const otp = params.get('otp') || params.get('pin');
+
+    if (joinRoomId || otp) {
+      if (socket && socket.connected && joinRoomId) {
+        showToast('Connecting to room...');
+        socket.emit('join-session-room', {
+          roomId: joinRoomId,
+          role: userRole,
+          deviceName: myDeviceName
+        }, (res) => {
+          if (res && res.success) {
+            userRole = res.peerRole === 'sender' ? 'receiver' : 'sender';
+            showStepPaired({ id: res.peerId, role: res.peerRole, name: res.peerDevice, isInitiator: true });
+            streamer.startConnection(res.peerId, true);
+          } else if (otp) {
+            connectPeerReceiver(otp);
+          } else {
+            showToast(res ? res.message : 'Invalid link');
+            showStepRole();
+          }
+        });
+      } else if (otp) {
+        connectPeerReceiver(otp);
+      }
+    }
+  }
+
+  // Receiver Connects with PIN
+  function connectWithPin(pin) {
+    if (socket && socket.connected) {
+      showToast(`Connecting with ${pin}...`);
+      socket.emit('join-with-otp', {
+        otp: pin,
         role: userRole,
         deviceName: myDeviceName
       }, (res) => {
@@ -494,29 +767,12 @@
           showStepPaired({ id: res.peerId, role: res.peerRole, name: res.peerDevice, isInitiator: true });
           streamer.startConnection(res.peerId, true);
         } else {
-          showToast(res ? res.message : 'Invalid link');
-          showStepRole();
+          connectPeerReceiver(pin);
         }
       });
+    } else {
+      connectPeerReceiver(pin);
     }
-  }
-
-  // Receiver Connects with PIN
-  function connectWithPin(pin) {
-    showToast(`Connecting with ${pin}...`);
-    socket.emit('join-with-otp', {
-      otp: pin,
-      role: userRole,
-      deviceName: myDeviceName
-    }, (res) => {
-      if (res && res.success) {
-        userRole = res.peerRole === 'sender' ? 'receiver' : 'sender';
-        showStepPaired({ id: res.peerId, role: res.peerRole, name: res.peerDevice, isInitiator: true });
-        streamer.startConnection(res.peerId, true);
-      } else {
-        showToast(res ? res.message : 'Invalid PIN');
-      }
-    });
   }
 
   // Mobile File Selection Guard
@@ -607,24 +863,66 @@
       return;
     }
 
-    // Reset receiver list when starting a fresh batch
-    if (socket && pairedPeer) {
+    activeTransferPanel.style.display = 'block';
+    senderTransferPanel.style.display = 'none';
+
+    // If connected via PeerJS direct P2P DataConnection
+    if (activePeerConn && activePeerConn.open) {
+      activePeerConn.send(JSON.stringify({ type: 'BATCH_START', totalFiles: stagedFiles.length }));
+
+      const CHUNK_SIZE = 64 * 1024;
+      for (let i = 0; i < stagedFiles.length; i++) {
+        const file = stagedFiles[i];
+        transferFileName.textContent = file.name;
+        transferFileCounter.textContent = `File ${i + 1} of ${stagedFiles.length}`;
+
+        activePeerConn.send(JSON.stringify({
+          type: 'FILE_METADATA',
+          name: file.name,
+          size: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          fileIndex: i + 1,
+          totalFiles: stagedFiles.length
+        }));
+
+        let offset = 0;
+        while (offset < file.size) {
+          const slice = file.slice(offset, offset + CHUNK_SIZE);
+          const buf = await slice.arrayBuffer();
+          activePeerConn.send(buf);
+          offset += buf.byteLength;
+
+          const pct = Math.min(100, Math.round((offset / file.size) * 100));
+          progressBarFill.style.width = `${pct}%`;
+          transferPercentVal.textContent = `${pct}%`;
+          transferredBytesLabel.textContent = formatBytes(offset);
+          totalBytesLabel.textContent = formatBytes(file.size);
+          await new Promise(r => setTimeout(r, 4));
+        }
+
+        activePeerConn.send(JSON.stringify({ type: 'FILE_COMPLETE' }));
+      }
+
+      activePeerConn.send(JSON.stringify({ type: 'TRANSFER_ALL_DONE' }));
+      handleAllCompleted();
+      return;
+    }
+
+    // Reset receiver list when starting a fresh batch on Socket
+    if (socket && socket.connected && pairedPeer) {
       socket.emit('transfer-batch-start', {
         targetId: pairedPeer.id,
         totalFiles: stagedFiles.length
       });
     }
 
-    activeTransferPanel.style.display = 'block';
-    senderTransferPanel.style.display = 'none';
-
     for (let i = 0; i < stagedFiles.length; i++) {
       const file = stagedFiles[i];
       transferFileName.textContent = file.name;
       transferFileCounter.textContent = `File ${i + 1} of ${stagedFiles.length}`;
 
-      // If file is small/medium (<= 20MB): send via instant WebSocket in 0.01 seconds!
-      if (file.size <= 20 * 1024 * 1024) {
+      // If file is small/medium (<= 20MB) and socket is connected: send via instant WebSocket
+      if (socket && socket.connected && file.size <= 20 * 1024 * 1024) {
         const buffer = await file.arrayBuffer();
         socket.emit('instant-file-send', {
           targetId: pairedPeer.id,
@@ -644,8 +942,10 @@
         currentSpeedVal.textContent = 'Instant';
         etaVal.textContent = 'Done';
       } else {
-        // Massive files (> 20MB up to 100GB): WebRTC chunk stream
-        await streamer.streamSingleFile(file, i + 1, stagedFiles.length);
+        // Massive files or WebRTC chunk stream
+        if (streamer) {
+          await streamer.streamSingleFile(file, i + 1, stagedFiles.length);
+        }
       }
     }
 
@@ -728,23 +1028,31 @@
       showStepMethod(userRole);
     });
 
-    qrScanner = new QRScannerManager('receiverCameraViewfinder', (roomId) => {
+    qrScanner = new QRScannerManager('receiverCameraViewfinder', (roomId, otp) => {
       showToast('QR Code Recognized');
       startReceiverCameraBtn.style.display = 'inline-flex';
       stopReceiverCameraBtn.style.display = 'none';
 
-      socket.emit('join-session-room', {
-        roomId,
-        role: 'receiver',
-        deviceName: myDeviceName
-      }, (res) => {
-        if (res && res.success) {
-          showStepPaired({ id: res.peerId, role: res.peerRole, name: res.peerDevice, isInitiator: true });
-          streamer.startConnection(res.peerId, true);
-        } else {
-          showToast(res ? res.message : 'QR code invalid');
-        }
-      });
+      if (socket && socket.connected && roomId) {
+        socket.emit('join-session-room', {
+          roomId,
+          role: 'receiver',
+          deviceName: myDeviceName
+        }, (res) => {
+          if (res && res.success) {
+            showStepPaired({ id: res.peerId, role: res.peerRole, name: res.peerDevice, isInitiator: true });
+            streamer.startConnection(res.peerId, true);
+          } else if (otp) {
+            connectPeerReceiver(otp);
+          } else {
+            showToast(res ? res.message : 'QR code invalid');
+          }
+        });
+      } else if (otp) {
+        connectPeerReceiver(otp);
+      } else if (roomId) {
+        connectPeerReceiver(roomId);
+      }
     }, (err) => console.warn(err));
 
     startReceiverCameraBtn.addEventListener('click', async () => {

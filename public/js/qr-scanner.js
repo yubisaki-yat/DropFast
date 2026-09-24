@@ -66,17 +66,28 @@ class QRScannerManager {
   handleDecodedText(decodedText) {
     try {
       let roomId = null;
-      if (decodedText.includes('join=')) {
-        const url = new URL(decodedText);
-        roomId = url.searchParams.get('join');
-      } else if (decodedText.startsWith('room_')) {
+      let otp = null;
+      if (decodedText.includes('join=') || decodedText.includes('otp=')) {
+        try {
+          const url = new URL(decodedText);
+          roomId = url.searchParams.get('join') || url.searchParams.get('room');
+          otp = url.searchParams.get('otp') || url.searchParams.get('pin');
+        } catch(e) {
+          const matchJoin = decodedText.match(/[?&]join=([^&]+)/);
+          const matchOtp = decodedText.match(/[?&]otp=([^&]+)/);
+          if (matchJoin) roomId = matchJoin[1];
+          if (matchOtp) otp = matchOtp[1];
+        }
+      } else if (decodedText.startsWith('drop_') || decodedText.startsWith('room_')) {
         roomId = decodedText;
+      } else if (/^\d{6}$/.test(decodedText.trim())) {
+        otp = decodedText.trim();
       }
 
-      if (roomId) {
+      if (roomId || otp) {
         this.stop();
         if (this.onScanSuccess) {
-          this.onScanSuccess(roomId);
+          this.onScanSuccess(roomId, otp);
         }
       }
     } catch (e) {
