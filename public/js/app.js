@@ -353,6 +353,7 @@
   }
 
   // Helper to generate a client-side pairing session (0ms instant QR, serverless fallback)
+  // Helper to generate a client-side pairing session (0ms instant QR, serverless fallback)
   function generateLocalSession() {
     const roomId = 'drop_' + Math.random().toString(36).substring(2, 10);
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -370,6 +371,11 @@
       } catch (err) {
         console.warn('QRious generation error:', err);
       }
+    }
+
+    // High-reliability fallback if QRious is still loading
+    if (!qrDataUrl) {
+      qrDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(joinUrl)}`;
     }
 
     return {
@@ -392,7 +398,9 @@
       senderQrImage.src = res.qrDataUrl;
       senderQrImage.style.display = 'block';
     }
-    senderWifiUrl.value = res.joinUrl;
+    if (senderWifiUrl) {
+      senderWifiUrl.value = res.joinUrl;
+    }
 
     const pinBoxes = senderPinDisplay.querySelectorAll('.pin-box');
     res.otp.split('').forEach((d, i) => {
@@ -403,7 +411,7 @@
       startQrAutoRefreshTimer();
     }
 
-    // If socket is not connected (e.g. static hosting on Netlify), activate PeerJS listener
+    // Activate PeerJS listener whenever socket is not connected or on static hosting
     if (!socket || !socket.connected) {
       initPeerSender(res.otp);
     }
@@ -414,15 +422,20 @@
     senderQrLoader.style.display = 'flex';
     senderQrImage.style.display = 'none';
 
-    // If socket is connected to local Node.js server, use it with 3.5s timeout safeguard
-    if (socket && socket.connected) {
+    // Check if on static hosting (Netlify, GitHub Pages, Vercel static)
+    const isStaticHost = window.location.hostname.includes('netlify.app') || 
+                         window.location.hostname.includes('github.io') || 
+                         window.location.hostname.includes('pages.dev');
+
+    // If on Node.js backend (Render, Railway, Localhost) and socket is connected:
+    if (!isStaticHost && socket && socket.connected) {
       let responded = false;
       const timeoutId = setTimeout(() => {
         if (!responded) {
           console.log('[DropFast] Server response timeout, using instant client-side QR session');
           applySessionData(generateLocalSession());
         }
-      }, 3500);
+      }, 2500);
 
       socket.emit('create-session', {
         role: userRole,
@@ -438,7 +451,7 @@
         }
       });
     } else {
-      // Offline / Netlify static mode: Generate QR Code instantly!
+      // 0ms Instant QR generation for Netlify static deployment
       applySessionData(generateLocalSession());
     }
   }
