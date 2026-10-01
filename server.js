@@ -228,7 +228,7 @@ app.post('/api/ai-ocr', async (req, res) => {
 // Socket.IO Events
 io.on('connection', (socket) => {
   // Create pairing session
-  socket.on('create-session', async ({ role, deviceName }, callback) => {
+  socket.on('create-session', async ({ role, deviceName, origin }, callback) => {
     // Clean up previous room if any
     const prevRoomId = socketRoomMap.get(socket.id);
     if (prevRoomId && rooms.has(prevRoomId)) {
@@ -261,7 +261,20 @@ io.on('connection', (socket) => {
     socketRoomMap.set(socket.id, roomId);
     socket.join(roomId);
 
-    const joinUrl = `http://${localIp}:${PORT}?join=${roomId}`;
+    // Determine correct public or LAN URL for QR code
+    let baseUrl = (origin || '').replace(/\/+$/, '');
+    if (!baseUrl) {
+      const reqHeaders = socket.handshake.headers;
+      const host = reqHeaders.host;
+      const proto = reqHeaders['x-forwarded-proto'] || (socket.handshake.secure ? 'https' : 'http');
+      if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+        baseUrl = `${proto}://${host}`;
+      } else {
+        baseUrl = `http://${localIp}:${PORT}`;
+      }
+    }
+
+    const joinUrl = `${baseUrl}?join=${roomId}&otp=${otp}`;
     let qrDataUrl = '';
     try {
       qrDataUrl = await QRCode.toDataURL(joinUrl, {

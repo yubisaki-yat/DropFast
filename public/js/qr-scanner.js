@@ -71,10 +71,10 @@ class QRScannerManager {
         try {
           const url = new URL(decodedText);
           roomId = url.searchParams.get('join') || url.searchParams.get('room');
-          otp = url.searchParams.get('otp') || url.searchParams.get('pin');
+          otp = url.searchParams.get('otp') || url.searchParams.get('pin') || url.searchParams.get('code');
         } catch(e) {
           const matchJoin = decodedText.match(/[?&]join=([^&]+)/);
-          const matchOtp = decodedText.match(/[?&]otp=([^&]+)/);
+          const matchOtp = decodedText.match(/[?&](?:otp|pin|code)=([^&]+)/);
           if (matchJoin) roomId = matchJoin[1];
           if (matchOtp) otp = matchOtp[1];
         }
@@ -96,9 +96,11 @@ class QRScannerManager {
   }
 
   async stop() {
-    if (!this.isScanning || !this.html5QrCode) return;
+    if (!this.html5QrCode) return;
     try {
-      await this.html5QrCode.stop();
+      if (this.isScanning) {
+        await this.html5QrCode.stop();
+      }
       await this.html5QrCode.clear();
     } catch (e) {
       console.warn('Error stopping scanner:', e);
